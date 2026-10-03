@@ -1,0 +1,12 @@
+{
+  "name": "yt-cipher-via-vm",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "jsdom": "^29.1.1"
+  }
+}

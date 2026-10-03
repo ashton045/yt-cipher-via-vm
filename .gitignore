@@ -1,0 +1,3 @@
+node_modules/
+player_cache/
+.env
