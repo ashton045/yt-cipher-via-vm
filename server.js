@@ -4,21 +4,29 @@ import {
   decryptSignature,
   getSts,
   getActivePlayerUrl
-} from "./player_vm.js";
+} from "./player.js";
 
 if (typeof process.loadEnvFile === "function") {
   try {
     process.loadEnvFile();
-  } catch {}
+  } catch { }
 }
 
 const port = process.env.PORT || 8001;
 const host = process.env.HOST || "0.0.0.0";
+const pass = process.env.API_TOKEN;
 
 const server = http.createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json");
 
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  
+  if (pass) {
+    if (req.headers.authorization !== `${pass}`) {
+      res.writeHead(401).end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+  }
 
   try {
     const body = req.method === "POST" ? await new Response(req).json().catch(() => ({})) : {};
@@ -52,8 +60,9 @@ server.listen(port, host, async () => {
 
   try {
 
-    const activeUrl = await getActivePlayerUrl();
-    console.log(`yt player script url: ${activeUrl}`);
+    const active_url = await getActivePlayerUrl();
+    console.log(`yt player script url: ${active_url}`);
+    await getSts({ player_url: active_url });
 
   } catch (err) {
     console.error(err);

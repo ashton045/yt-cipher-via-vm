@@ -1,0 +1,18 @@
+services:
+  cipher-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: ghcr.io/ashton045/yt-cipher-via-vm:latest
+    container_name: yt_cipher_vm_api
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - HOST=0.0.0.0
+      - OVERRIDE_PLAYER_VARIANT=player_es6.vflset
+      - OVERRIDE_REGION=en_US
+      - MAX_THREADS=4
+    # uncomment API_TOKEN to add a password
+    #  - API_TOKEN=test
+    restart: unless-stopped
