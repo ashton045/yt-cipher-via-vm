@@ -4,9 +4,11 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/players.js"
   },
   "dependencies": {
+    "astring": "^1.9.0",
     "meriyah": "^7.3.3"
   }
 }

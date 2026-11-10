@@ -20,7 +20,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json");
 
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  
+
   if (pass) {
     if (req.headers.authorization !== `${pass}`) {
       res.writeHead(401).end(JSON.stringify({ error: "Unauthorized" }));
@@ -49,7 +49,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    res.writeHead(404).end(JSON.stringify({ error: `Endpoint not found: ${req.method} ${url.pathname}` }));
+    res.writeHead(404).end(JSON.stringify({ error: `endpoint not found: ${req.method} ${url.pathname}` }));
   } catch (err) {
     res.writeHead(400).end(JSON.stringify({ error: err.message }));
   }

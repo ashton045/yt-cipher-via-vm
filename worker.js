@@ -63,10 +63,13 @@ function createBrowserSandbox() {
     clearInterval
   };
 
+  const blocked = new Set(['process', 'Buffer', 'global', 'require', 'module', 'parentPort', 'Worker']);
+
   const windowProxy = new Proxy(globals, {
     get(target, prop) {
       if (prop in target) return target[prop];
       if (typeof prop === 'string' && (prop === 'window' || prop === 'self' || prop === 'globalThis')) return windowProxy;
+      if (typeof prop === 'string' && blocked.has(prop)) return undefined;
       if (prop in globalThis) return globalThis[prop];
       return undefined;
     }
@@ -81,22 +84,39 @@ function createBrowserSandbox() {
 
 const MAX_PLAYER_CACHE = 5;
 
-function load_player(player_url, hooked_code, sts) {
+function load_player(player_url, hooked_code, sts, fallback_code = null) {
   if (vm_cache.size >= MAX_PLAYER_CACHE) {
     const oldest_key = vm_cache.keys().next().value;
     vm_cache.delete(oldest_key);
   }
 
-  const sandbox = createBrowserSandbox();
-  vm.runInContext(hooked_code, sandbox, { timeout: 5000 });
+  let sandbox = createBrowserSandbox();
+  let solver = null;
 
-  const solver = sandbox.__solve_url;
+  try {
+    vm.runInContext(hooked_code, sandbox, { timeout: 5000 });
+    solver = sandbox.__solve_url;
+  } catch {
+    solver = null;
+  }
+
+  if (typeof solver !== 'function' && fallback_code && fallback_code !== hooked_code) {
+    try {
+      sandbox = createBrowserSandbox();
+      vm.runInContext(fallback_code, sandbox, { timeout: 5000 });
+      solver = sandbox.__solve_url;
+      hooked_code = fallback_code;
+    } catch {
+      solver = null;
+    }
+  }
+
   if (typeof solver !== 'function') {
     throw new Error(`failed to bind player challenge solver in worker for ${player_url}`);
   }
 
-  function resolve_format(url, sp = 'sig', encrypted_sig = null) {
-    const url_obj = solver(url, sp, encrypted_sig || '');
+  function run_resolve_format(target_solver, url, sp = 'sig', encrypted_sig = null) {
+    const url_obj = target_solver(url, sp, encrypted_sig || '');
     const sig = url_obj.get(sp);
     const deciphered_sig = sig ? decodeURIComponent(sig) : null;
     const deciphered_n_param = url_obj.get('n') || null;
@@ -131,18 +151,32 @@ function load_player(player_url, hooked_code, sts) {
 
     return {
       resolved_url,
-      resolvedUrl: resolved_url,
       sig: deciphered_sig,
       n: deciphered_n_param,
       sp
     };
   }
 
-  function decrypt_signature(encrypted_sig, n_param) {
+  function resolve_format(url, sp = 'sig', encrypted_sig = null) {
+    try {
+      return run_resolve_format(solver, url, sp, encrypted_sig);
+    } catch (err) {
+      if (fallback_code && fallback_code !== hooked_code) {
+        sandbox = createBrowserSandbox();
+        vm.runInContext(fallback_code, sandbox, { timeout: 5000 });
+        solver = sandbox.__solve_url;
+        hooked_code = fallback_code;
+        return run_resolve_format(solver, url, sp, encrypted_sig);
+      }
+      throw err;
+    }
+  }
+
+  function run_decrypt_signature(target_solver, encrypted_sig, n_param) {
     const url = n_param
       ? `https://www.googlevideo.com/videoplayback?n=${encodeURIComponent(n_param)}`
       : 'https://www.googlevideo.com/videoplayback';
-    const url_obj = solver(url, 'sig', encrypted_sig || '');
+    const url_obj = target_solver(url, 'sig', encrypted_sig || '');
 
     const sig = url_obj.get('sig');
     return {
@@ -151,30 +185,42 @@ function load_player(player_url, hooked_code, sts) {
     };
   }
 
+  function decrypt_signature(encrypted_sig, n_param) {
+    try {
+      return run_decrypt_signature(solver, encrypted_sig, n_param);
+    } catch (err) {
+      if (fallback_code && fallback_code !== hooked_code) {
+        sandbox = createBrowserSandbox();
+        vm.runInContext(fallback_code, sandbox, { timeout: 5000 });
+        solver = sandbox.__solve_url;
+        hooked_code = fallback_code;
+        return run_decrypt_signature(solver, encrypted_sig, n_param);
+      }
+      throw err;
+    }
+  }
+
   const vm_config = {
     player_url,
     sts,
     solver,
     resolve_format,
-    resolveFormat: resolve_format,
-    decrypt_signature,
-    decryptSignature: decrypt_signature
+    decrypt_signature
   };
 
   vm_cache.set(player_url, vm_config);
   return vm_config;
 }
 
-const loadPlayer = load_player;
-
 parentPort.on('message', (msg) => {
   const player_url = msg.player_url || msg.playerUrl;
   const hooked_code = msg.hooked_code || msg.hookedCode;
+  const fallback_code = msg.fallback_code || msg.fallbackCode;
   const { id, type, sts, payload } = msg;
 
   try {
     if (type === 'LOAD_PLAYER') {
-      load_player(player_url, hooked_code, sts);
+      load_player(player_url, hooked_code, sts, fallback_code);
       parentPort.postMessage({ id, ok: true });
       return;
     }
